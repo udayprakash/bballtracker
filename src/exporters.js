@@ -9,6 +9,12 @@ const ftPctFor = (g) =>
     ? Math.round((g.freeThrowsMade / g.freeThrowsAttempted) * 100)
     : 0;
 
+const fgPctFor = (g) => {
+  const made = (g.points2 || 0) + (g.points3 || 0);
+  const att = (g.points2Attempted || 0) + (g.points3Attempted || 0);
+  return att > 0 ? Math.round((made / att) * 100) : 0;
+};
+
 const COLUMNS = [
   ['Game', (g, i) => i + 1],
   ['Opponent', (g) => g.opponent || ''],
@@ -22,7 +28,10 @@ const COLUMNS = [
       : 'L'],
   ['Points', (g) => playerPointsFor(g)],
   ['2PM', (g) => g.points2 || 0],
+  ['2PA', (g) => g.points2Attempted || 0],
   ['3PM', (g) => g.points3 || 0],
+  ['3PA', (g) => g.points3Attempted || 0],
+  ['FG%', (g) => fgPctFor(g)],
   ['FTM', (g) => g.freeThrowsMade || 0],
   ['FTA', (g) => g.freeThrowsAttempted || 0],
   ['FT%', (g) => ftPctFor(g)],
@@ -48,13 +57,16 @@ export function buildCsv(playerName, games) {
   const header = COLUMNS.map(([label]) => label);
   const rows = games.map((g, i) => COLUMNS.map(([, fn]) => fn(g, i)));
 
-  // Totals row: sum counting stats, recompute FT% from totals, blank labels.
+  // Totals row: sum counting stats, recompute percentages from totals, blank labels.
   const ftm = sumColumn(games, (g) => g.freeThrowsMade);
   const fta = sumColumn(games, (g) => g.freeThrowsAttempted);
+  const fgm = sumColumn(games, (g) => (g.points2 || 0) + (g.points3 || 0));
+  const fga = sumColumn(games, (g) => (g.points2Attempted || 0) + (g.points3Attempted || 0));
   const totalsRow = COLUMNS.map(([label, fn]) => {
     if (label === 'Game') return 'TOTAL';
     if (label === 'Opponent') return '';
     if (label === 'Result') return '';
+    if (label === 'FG%') return fga > 0 ? Math.round((fgm / fga) * 100) : 0;
     if (label === 'FT%') return fta > 0 ? Math.round((ftm / fta) * 100) : 0;
     return sumColumn(games, fn);
   });
