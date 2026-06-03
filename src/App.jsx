@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Minus, Trophy, RotateCcw, Download } from 'lucide-react';
+import { Plus, Minus, Trophy, RotateCcw, Download, Cloud, FolderCog } from 'lucide-react';
+import { buildCsv, buildSummary, exportFileName } from './exporters';
+import {
+  driveConfigured,
+  uploadToDrive,
+  pickFolder,
+  getSavedFolder,
+} from './googleDrive';
 
 const STORAGE_KEY = 'basketball-tracker-v1';
 const NAME_KEY = 'basketball-tracker-name-v1';
@@ -10,6 +17,8 @@ export default function App() {
   const [playerName, setPlayerName] = useState('Player');
   const [editingName, setEditingName] = useState(false);
   const [tempName, setTempName] = useState('');
+  const [driveStatus, setDriveStatus] = useState(null); // { type, text }
+  const [driveFolder, setDriveFolder] = useState(null);
   const hasLoadedRef = useRef(false);
 
   const emptyGame = () => ({
@@ -45,6 +54,7 @@ export default function App() {
     } catch (e) {
       console.error('Load failed', e);
     }
+    if (driveConfigured) setDriveFolder(getSavedFolder());
     hasLoadedRef.current = true;
     setLoading(false);
   }, []);
@@ -128,6 +138,41 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  const saveToDrive = async () => {
+    setDriveStatus({ type: 'working', text: 'Uploading to Drive…' });
+    try {
+      const files = [
+        {
+          name: exportFileName(playerName, 'csv'),
+          mimeType: 'text/csv',
+          content: buildCsv(playerName, games),
+        },
+        {
+          name: exportFileName(playerName, 'json'),
+          mimeType: 'application/json',
+          content: JSON.stringify({ playerName, games }, null, 2),
+        },
+      ];
+      const { folder } = await uploadToDrive(files);
+      setDriveFolder(folder);
+      setDriveStatus({ type: 'ok', text: `Saved to “${folder.name}”` });
+    } catch (e) {
+      setDriveStatus({ type: 'error', text: e.message || 'Upload failed' });
+    }
+  };
+
+  const changeDriveFolder = async () => {
+    try {
+      const folder = await pickFolder();
+      if (folder) {
+        setDriveFolder(folder);
+        setDriveStatus({ type: 'ok', text: `Folder set to “${folder.name}”` });
+      }
+    } catch (e) {
+      setDriveStatus({ type: 'error', text: e.message || 'Could not pick folder' });
+    }
+  };
+
   const game = games[activeGame];
   const playerPoints = (game.points2 * 2) + (game.points3 * 3) + game.freeThrowsMade;
   const ftPct = game.freeThrowsAttempted > 0
@@ -195,10 +240,37 @@ export default function App() {
             <Trophy size={20} />
             <span className="text-sm font-medium opacity-90">Tournament Tracker</span>
           </div>
-          <button onClick={exportBackup} className="bg-white/20 hover:bg-white/30 text-xs px-2 py-1 rounded flex items-center gap-1">
-            <Download size={12} /> Backup
-          </button>
+          <div className="flex items-center gap-1">
+            {driveConfigured && (
+              <button onClick={saveToDrive} className="bg-white/20 hover:bg-white/30 text-xs px-2 py-1 rounded flex items-center gap-1">
+                <Cloud size={12} /> Drive
+              </button>
+            )}
+            <button onClick={exportBackup} className="bg-white/20 hover:bg-white/30 text-xs px-2 py-1 rounded flex items-center gap-1">
+              <Download size={12} /> Backup
+            </button>
+          </div>
         </div>
+        {driveStatus && (
+          <div className="flex items-center justify-between gap-2 mb-1 text-xs">
+            <span
+              className={
+                driveStatus.type === 'error'
+                  ? 'text-red-100'
+                  : driveStatus.type === 'ok'
+                  ? 'text-green-100'
+                  : 'text-white/80'
+              }
+            >
+              {driveStatus.text}
+            </span>
+            {driveConfigured && driveFolder && (
+              <button onClick={changeDriveFolder} className="flex items-center gap-1 opacity-80 hover:opacity-100 underline">
+                <FolderCog size={11} /> Change folder
+              </button>
+            )}
+          </div>
+        )}
         {editingName ? (
           <div className="flex gap-2">
             <input
